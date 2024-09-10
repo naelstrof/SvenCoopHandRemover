@@ -50,6 +50,13 @@ string[] blackList = [
     "[gG]love",
     "_[aA]rm",
     "[aA]rms",
+    "_sleeve",
+    "fatigues",
+    "dm_base\\.bmp",
+    "v_soldier_revamp",
+    "braccia", // Arm in italian
+    "thumb\\.bmp", // Great many arms are built out of cs thumb.bmp's
+    "remaps_[0-9][0-9][0-9]_[0-9][0-9][0-9]_[0-9][0-9][0-9]", // lots of hev suit arms use textures representing their colors like so.
     "[hH]and(?!le|el)" // Hand, but not handle
 ];
 
@@ -74,10 +81,11 @@ void ProcessSMD(string path, string qcpath) {
         
         foreach (var line in File.ReadAllLines(path)) {
             if (line.EndsWith(".bmp")) {
-                if (line.StartsWith("#")) {
-                    failedToDecompile.Add(qcpath);
+                if (line.StartsWith("#") && !removeTextures.Contains(line.Substring(1))) {
+                    removeTextures.Add(RenameTexture(line, qcpath, line.Substring(1)));
+                } else {
+                    removeTextures.Add(line);
                 }
-                removeTextures.Add(line);
             }
             
 
@@ -107,12 +115,35 @@ void ProcessSMD(string path, string qcpath) {
             Console.WriteLine($"\t\tExploded {texture.Trim()}");
             File.Copy("./transparent.bmp", Path.Combine(smdDir.FullName, "maps_8bit", texture.Trim()), true);
             File.AppendAllText(qcpath, $"$texrendermode {texture.Trim()} masked\n");
+            
+            // These are treated as colorable team textures, due to their name. Which messes up the masked rendering.
+            if (Regex.IsMatch(texture.Trim(), ".*_[0-9][0-9][0-9]_[0-9][0-9][0-9]_[0-9][0-9][0-9]\\.bmp")) {
+                RenameTexture(texture.Trim(), qcpath, texture.Trim()[..^16] + ".bmp");
+            }
         }
 
         if (handCount < removeTextures.Count/2) {
             suspiciousRemovals.Add(path);
         }
     }
+}
+
+string RenameTexture(string currentFilename, string qcpath, string newFilename) {
+    Console.WriteLine($"\t\tMoved {currentFilename} to {newFilename}");
+    string qcContents = File.ReadAllText(qcpath);
+    File.WriteAllText(qcpath, qcContents.Replace(currentFilename, newFilename));
+    string qcDirectory = Path.GetDirectoryName(qcpath) ?? string.Empty;
+    foreach (var file in Directory.GetFiles(qcDirectory)) {
+        if (!file.EndsWith(".smd")) continue;
+        string smdContents = File.ReadAllText(file);
+        File.WriteAllText(file, smdContents.Replace(currentFilename, newFilename));
+    }
+
+    if (!File.Exists(Path.Combine(qcDirectory, "maps_8bit", currentFilename))) {
+        return newFilename;
+    }
+    File.Move(Path.Combine(qcDirectory, "maps_8bit", currentFilename), Path.Combine(qcDirectory, "maps_8bit", newFilename), true);
+    return newFilename;
 }
 
 void ProcessTexture(string path, string qcpath) {
@@ -122,9 +153,14 @@ void ProcessTexture(string path, string qcpath) {
             if (manualForceIgnore.Contains(fileName.Trim())) {
                 continue;
             }
+
             Console.WriteLine($"\tExploded {fileName}");
             File.Copy("./transparent.bmp", path, true);
             File.AppendAllText(qcpath, $"$texrendermode {fileName} masked\n");
+            
+            if (Regex.IsMatch(fileName.Trim(), ".*_[0-9][0-9][0-9]_[0-9][0-9][0-9]_[0-9][0-9][0-9]\\.bmp")) {
+                RenameTexture(fileName.Trim(), qcpath, fileName.Trim()[..^16] + ".bmp");
+            }
         }
     }
 }

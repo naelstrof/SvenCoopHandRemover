@@ -53,6 +53,7 @@ string[] blackList = [
     "_sleeve",
     "fatigues",
     "dm_base\\.bmp",
+    "skin\\.bmp",
     "v_soldier_revamp",
     "braccia", // Arm in italian
     "thumb\\.bmp", // Great many arms are built out of cs thumb.bmp's
@@ -65,6 +66,7 @@ List<string> manualForceIgnore = [
     "cso_femalehands_shotgun_v2",
 ];
 
+HashSet<string> explodedBMPs = new HashSet<string>();
 HashSet<string> failedToDecompile = new HashSet<string>();
 HashSet<string> suspiciousRemovals = new HashSet<string>();
 
@@ -112,13 +114,20 @@ void ProcessSMD(string path, string qcpath) {
                 }
             }
 
-            Console.WriteLine($"\t\tExploded {texture.Trim()}");
-            File.Copy("./transparent.bmp", Path.Combine(smdDir.FullName, "maps_8bit", texture.Trim()), true);
-            File.AppendAllText(qcpath, $"$texrendermode {texture.Trim()} masked\n");
-            
+            string textureName = texture;
+            string filepath = Path.Combine(smdDir.FullName, "maps_8bit", texture.Trim());
             // These are treated as colorable team textures, due to their name. Which messes up the masked rendering.
             if (Regex.IsMatch(texture.Trim(), ".*_[0-9][0-9][0-9]_[0-9][0-9][0-9]_[0-9][0-9][0-9]\\.bmp")) {
-                RenameTexture(texture.Trim(), qcpath, texture.Trim()[..^16] + ".bmp");
+                textureName = RenameTexture(texture.Trim(), qcpath, texture.Trim()[..^16] + ".bmp");
+                filepath = Path.Combine(smdDir.FullName, "maps_8bit", texture.Trim()[..^16] + ".bmp");
+            }
+
+            
+            if (!explodedBMPs.Contains(filepath)) {
+                Console.WriteLine($"\t\tExploding {textureName.Trim()}");
+                explodedBMPs.Add(filepath);
+                //File.Copy("./transparent.bmp", Path.Combine(smdDir.FullName, "maps_8bit", texture.Trim()), true);
+                File.AppendAllText(qcpath, $"$texrendermode {textureName.Trim()} masked\n");
             }
         }
 
@@ -153,13 +162,17 @@ void ProcessTexture(string path, string qcpath) {
             if (manualForceIgnore.Contains(fileName.Trim())) {
                 continue;
             }
-
-            Console.WriteLine($"\tExploded {fileName}");
-            File.Copy("./transparent.bmp", path, true);
-            File.AppendAllText(qcpath, $"$texrendermode {fileName} masked\n");
             
             if (Regex.IsMatch(fileName.Trim(), ".*_[0-9][0-9][0-9]_[0-9][0-9][0-9]_[0-9][0-9][0-9]\\.bmp")) {
-                RenameTexture(fileName.Trim(), qcpath, fileName.Trim()[..^16] + ".bmp");
+                fileName = RenameTexture(fileName.Trim(), qcpath, fileName.Trim()[..^16] + ".bmp");
+                path = Path.Combine(Path.GetDirectoryName(path) ?? string.Empty, fileName);
+            }
+            
+            if (!explodedBMPs.Contains(path)) {
+                Console.WriteLine($"\tExploding {fileName}");
+                explodedBMPs.Add(path);
+                //File.Copy("./transparent.bmp", path, true);
+                File.AppendAllText(qcpath, $"$texrendermode {fileName} masked\n");
             }
         }
     }
@@ -225,6 +238,11 @@ void ProcessFolder(DirectoryInfo directory) {
 
 ProcessFolder(svencoopFolder);
 ProcessFolder(downloadFolder);
+
+Console.WriteLine("Copying transparent bmps...");
+foreach (var path in explodedBMPs) {
+    File.Copy("./transparent.bmp", path, true);
+}
 
 Console.WriteLine("The following models failed to decompile (due to decompiler not being perfect):");
 foreach (var file in failedToDecompile) {
